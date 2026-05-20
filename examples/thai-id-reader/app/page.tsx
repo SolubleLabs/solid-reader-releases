@@ -1,6 +1,12 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { useCallback, useEffect, useState } from "react";
+import { CardDataDisplay } from "../components/card-data-display";
+import { EmptyState } from "../components/empty-state";
+import { ErrorDisplay } from "../components/error-display";
+import { ReadIdButton } from "../components/read-id-button";
+import { StatusIndicators } from "../components/status-indicators";
 import {
   isLocalBridgeUnreachableError,
   pingLocalBridgeWithTimeout,
@@ -8,112 +14,57 @@ import {
 import {
   ensureThaiIdBridgeReady,
   formatThaiIdReadError,
-  readThaiIdPayload,
+  readThaiIdPayloadWithRaw,
   type ThaiIdCardPayload,
+  type ThaiIdCardReadResponse,
   ThaiIdReadUserError,
 } from "../lib/thai-id-card";
 
-type BridgeStatus = "checking" | "connected" | "not_running" | "not_responding";
-type ReaderStatus = "unknown" | "checking" | "ready" | "no_reader";
-type CardStatus = "unknown" | "checking" | "inserted" | "no_card" | "read_error";
+export type BridgeStatus = "checking" | "connected" | "not_running" | "not_responding";
+export type ReaderStatus = "unknown" | "checking" | "ready" | "no_reader";
+export type CardStatus = "unknown" | "checking" | "inserted" | "no_card" | "read_error";
 
-interface Field {
-  label: string;
-  value: string;
-  full?: boolean;
+interface ReadState {
+  isReading: boolean;
+  cardData: ThaiIdCardPayload | null;
+  error: string | null;
+  rawJson: ThaiIdCardReadResponse | null;
 }
 
-function displayValue(value: string | undefined): string {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : "-";
-}
-
-function genderLabel(value: ThaiIdCardPayload["gender"]): string {
-  return value === "M" ? "Male" : "Female";
-}
-
-function FieldRow({ label, value, full = false }: Field) {
-  return (
-    <div className={full ? "field-row full" : "field-row"}>
-      <span className="field-label">{label}</span>
-      <span className="field-value">{displayValue(value)}</span>
-    </div>
-  );
-}
-
-function statusText(kind: "bridge", status: BridgeStatus): string;
-function statusText(kind: "reader", status: ReaderStatus): string;
-function statusText(kind: "card", status: CardStatus): string;
-function statusText(
-  kind: "bridge" | "reader" | "card",
-  status: BridgeStatus | ReaderStatus | CardStatus,
-): string {
-  if (kind === "bridge") {
-    switch (status) {
-      case "checking":
-        return "Checking SolId Reader...";
-      case "connected":
-        return "SolId Reader detected";
-      case "not_running":
-        return "SolId Reader not running";
-      case "not_responding":
-        return "SolId Reader not responding";
-    }
+function getBridgeIssue(status: BridgeStatus): {
+  title: string;
+  message: string;
+  thaiMessage: string;
+} | null {
+  if (status === "not_running") {
+    return {
+      title: "SolId Reader Not Running",
+      message: "Start SolId Reader on this computer, then check again.",
+      thaiMessage: "กรุณาเปิดโปรแกรม SolId Reader บนเครื่องนี้ แล้วลองตรวจสอบอีกครั้ง",
+    };
   }
 
-  if (kind === "reader") {
-    switch (status) {
-      case "checking":
-        return "Checking reader...";
-      case "ready":
-        return "Reader responded";
-      case "no_reader":
-        return "No reader detected";
-      case "unknown":
-        return "Reader not checked";
-    }
+  if (status === "not_responding") {
+    return {
+      title: "SolId Reader Not Responding",
+      message: "SolId Reader replied unexpectedly. Restart SolId Reader, then check again.",
+      thaiMessage: "โปรแกรม SolId Reader ตอบกลับไม่ถูกต้อง กรุณาเปิดใหม่แล้วลองอีกครั้ง",
+    };
   }
 
-  switch (status) {
-    case "checking":
-      return "Checking card...";
-    case "inserted":
-      return "Card inserted and read";
-    case "no_card":
-      return "No card inserted";
-    case "read_error":
-      return "Card read error";
-    case "unknown":
-      return "Card not checked";
-  }
-
-  return "Status unavailable";
+  return null;
 }
 
-function StatusPill({
-  label,
-  children,
-  tone,
-}: {
-  label: string;
-  children: string;
-  tone: "neutral" | "good" | "bad" | "working";
-}) {
-  return (
-    <div className={`status-pill ${tone}`}>
-      <span className="status-label">{label}</span>
-      <span className="status-value">{children}</span>
-    </div>
-  );
-}
-
-export default function Home() {
-  const [card, setCard] = useState<ThaiIdCardPayload | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+export default function ThaiIdReaderPage() {
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("checking");
   const [readerStatus, setReaderStatus] = useState<ReaderStatus>("unknown");
   const [cardStatus, setCardStatus] = useState<CardStatus>("unknown");
+  const [readState, setReadState] = useState<ReadState>({
+    isReading: false,
+    cardData: null,
+    error: null,
+    rawJson: null,
+  });
 
   const checkBridgeStatus = useCallback(async () => {
     try {
@@ -124,24 +75,6 @@ export default function Home() {
       setBridgeStatus("not_running");
     }
   }, []);
-
-  const fields = useMemo<Field[]>(() => {
-    if (!card) {
-      return [];
-    }
-
-    return [
-      { label: "Citizen ID", value: card.citizenID },
-      { label: "Date of birth", value: card.dateOfBirth },
-      { label: "Thai name", value: card.fullNameTH },
-      { label: "English name", value: card.fullNameEN },
-      { label: "Gender", value: genderLabel(card.gender) },
-      { label: "Card issuer", value: card.cardIssuer },
-      { label: "Issue date", value: card.issueDate },
-      { label: "Expire date", value: card.expireDate },
-      { label: "Address", value: card.address, full: true },
-    ];
-  }, [card]);
 
   useEffect(() => {
     const initialCheckId = window.setTimeout(() => {
@@ -158,20 +91,29 @@ export default function Home() {
     };
   }, [checkBridgeStatus]);
 
-  async function handleReadThaiId(): Promise<void> {
-    setLoading(true);
-    setError(null);
-    setCard(null);
+  const handleReadId = useCallback(async () => {
+    setReadState({
+      isReading: true,
+      cardData: null,
+      error: null,
+      rawJson: null,
+    });
     setReaderStatus("checking");
     setCardStatus("checking");
 
     try {
       await ensureThaiIdBridgeReady();
       setBridgeStatus("connected");
-      const payload = await readThaiIdPayload();
+
+      const result = await readThaiIdPayloadWithRaw();
       setReaderStatus("ready");
       setCardStatus("inserted");
-      setCard(payload);
+      setReadState({
+        isReading: false,
+        cardData: result.payload,
+        error: null,
+        rawJson: result.rawJson,
+      });
     } catch (readError) {
       if (isLocalBridgeUnreachableError(readError)) {
         setBridgeStatus("not_running");
@@ -186,123 +128,133 @@ export default function Home() {
         } else if (readError.code === "NO_CARD") {
           setReaderStatus("ready");
           setCardStatus("no_card");
-        } else if (readError.code === "CARD_ERROR") {
+        } else {
           setReaderStatus("ready");
           setCardStatus("read_error");
         }
+      } else {
+        setCardStatus("read_error");
       }
 
-      setError(formatThaiIdReadError(readError));
-    } finally {
-      setLoading(false);
+      setReadState({
+        isReading: false,
+        cardData: null,
+        error: formatThaiIdReadError(readError),
+        rawJson: null,
+      });
     }
-  }
+  }, []);
+
+  const handleClearData = useCallback(() => {
+    setReadState({
+      isReading: false,
+      cardData: null,
+      error: null,
+      rawJson: null,
+    });
+    setCardStatus("unknown");
+  }, []);
+
+  const canRead = bridgeStatus === "connected" && !readState.isReading;
+  const bridgeIssue =
+    !readState.isReading && !readState.cardData ? getBridgeIssue(bridgeStatus) : null;
 
   return (
-    <main className="page-shell">
-      <section className="reader-panel" aria-labelledby="reader-title">
-        <div className="reader-header">
-          <div>
-            <h1 id="reader-title" className="reader-title">
-              Thai ID Reader
-            </h1>
-            <p className="reader-subtitle">SolId Reader local bridge</p>
-          </div>
-          <button
-            type="button"
-            className="read-button"
-            onClick={handleReadThaiId}
-            disabled={loading}
-          >
-            {loading ? "Reading..." : "Read Thai ID"}
-          </button>
+    <main className="relative min-h-screen overflow-hidden bg-background p-4 text-foreground md:p-6 lg:p-8">
+      <div className="kiosk-grid pointer-events-none fixed inset-0 -z-10" aria-hidden="true" />
+
+      <div className="mx-auto max-w-6xl space-y-6 md:space-y-8">
+        <motion.header
+          className="space-y-2 text-center"
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, ease: "easeOut" }}
+        >
+          <h1 className="text-balance text-3xl font-semibold tracking-tight text-foreground md:text-4xl lg:text-5xl">
+            Thai ID Card Reader
+          </h1>
+          <p className="text-base text-muted-foreground md:text-lg">เครื่องอ่านบัตรประชาชน</p>
+        </motion.header>
+
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.6, delay: 0.1, ease: "easeOut" }}
+        >
+          <StatusIndicators
+            bridgeStatus={bridgeStatus}
+            readerStatus={readerStatus}
+            cardStatus={cardStatus}
+          />
+        </motion.div>
+
+        <motion.div
+          className="flex justify-center py-4 md:py-6"
+          initial={{ opacity: 0, scale: 0.92 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.5, delay: 0.2, ease: "easeOut" }}
+        >
+          <ReadIdButton onClick={handleReadId} disabled={!canRead} isReading={readState.isReading} />
+        </motion.div>
+
+        <div className="min-h-[400px]">
+          <AnimatePresence mode="wait">
+            {bridgeIssue ? (
+              <motion.div
+                key="bridge-error"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.4 }}
+              >
+                <ErrorDisplay
+                  title={bridgeIssue.title}
+                  message={bridgeIssue.message}
+                  thaiMessage={bridgeIssue.thaiMessage}
+                  onRetry={checkBridgeStatus}
+                  canRetry
+                  actionLabel="Check Again"
+                  tips={[
+                    "Open SolId Reader on this Windows computer.",
+                    "Confirm the bridge uses the same secret as .env.local.",
+                    "Keep this browser and SolId Reader on the same clinic PC.",
+                  ]}
+                />
+              </motion.div>
+            ) : readState.error ? (
+              <motion.div
+                key="error"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.4 }}
+              >
+                <ErrorDisplay message={readState.error} onRetry={handleReadId} canRetry={canRead} />
+              </motion.div>
+            ) : readState.cardData ? (
+              <motion.div
+                key="data"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -20 }}
+                transition={{ duration: 0.4 }}
+              >
+                <CardDataDisplay data={readState.cardData} rawJson={readState.rawJson} onClear={handleClearData} />
+              </motion.div>
+            ) : (
+              <motion.div
+                key="empty"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.3 }}
+              >
+                <EmptyState isReading={readState.isReading} />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-
-        <div className="status-grid" aria-live="polite">
-          <StatusPill
-            label="Bridge"
-            tone={
-              bridgeStatus === "connected"
-                ? "good"
-                : bridgeStatus === "checking"
-                  ? "working"
-                  : "bad"
-            }
-          >
-            {statusText("bridge", bridgeStatus)}
-          </StatusPill>
-          <StatusPill
-            label="Reader"
-            tone={
-              readerStatus === "ready"
-                ? "good"
-                : readerStatus === "checking"
-                  ? "working"
-                  : readerStatus === "no_reader"
-                    ? "bad"
-                    : "neutral"
-            }
-          >
-            {statusText("reader", readerStatus)}
-          </StatusPill>
-          <StatusPill
-            label="Card"
-            tone={
-              cardStatus === "inserted"
-                ? "good"
-                : cardStatus === "checking"
-                  ? "working"
-                  : cardStatus === "no_card" || cardStatus === "read_error"
-                    ? "bad"
-                    : "neutral"
-            }
-          >
-            {statusText("card", cardStatus)}
-          </StatusPill>
-        </div>
-
-        <p className="status-line" aria-live="polite">
-          {loading ? "Reading card data..." : card ? "Card read complete." : ""}
-        </p>
-
-        {error ? (
-          <div className="error-box" role="alert">
-            {error}
-          </div>
-        ) : null}
-
-        {card ? (
-          <div className="result-stack">
-            <div className="card-result">
-              <div className="photo-frame">
-                {card.photoAsBase64Uri ? (
-                  // Bridge photos are already data URIs, so Next image optimization is not useful here.
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={card.photoAsBase64Uri} alt="Thai ID card holder" />
-                ) : null}
-              </div>
-              <div className="field-grid">
-                {fields.map((field) => (
-                  <FieldRow
-                    key={field.label}
-                    label={field.label}
-                    value={field.value}
-                    full={field.full}
-                  />
-                ))}
-              </div>
-            </div>
-            <section className="json-panel" aria-labelledby="json-heading">
-              <h2 id="json-heading" className="section-title">
-                Raw JSON
-              </h2>
-              <pre>{JSON.stringify(card, null, 2)}</pre>
-            </section>
-          </div>
-        ) : (
-          <div className="empty-state">No card data loaded.</div>
-        )}
-      </section>
+      </div>
     </main>
   );
 }

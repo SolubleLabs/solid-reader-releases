@@ -37,9 +37,14 @@ interface ThaiIdCardReadErrorResponse {
   code?: ReadIdErrorCode;
 }
 
-type ThaiIdCardReadResponse =
+export type ThaiIdCardReadResponse =
   | ThaiIdCardReadSuccessResponse
   | ThaiIdCardReadErrorResponse;
+
+export interface ThaiIdPayloadReadResult {
+  payload: ThaiIdCardPayload;
+  rawJson: ThaiIdCardReadResponse;
+}
 
 export class ThaiIdReadUserError extends Error {
   readonly code?: ReadIdErrorCode | "BAD_JSON" | "HTTP_ERROR";
@@ -104,7 +109,7 @@ export async function ensureThaiIdBridgeReady(): Promise<void> {
   }
 }
 
-export async function readThaiIdPayload(): Promise<ThaiIdCardPayload> {
+export async function readThaiIdPayloadWithRaw(): Promise<ThaiIdPayloadReadResult> {
   const response = await readThaiIdCard();
 
   let json: ThaiIdCardReadResponse;
@@ -125,10 +130,18 @@ export async function readThaiIdPayload(): Promise<ThaiIdCardPayload> {
   }
 
   if (json.success) {
-    return json.data;
+    return {
+      payload: json.data,
+      rawJson: json,
+    };
   }
 
   throw thaiIdReadErrorFromBridgeResponse(json.code, json.error);
+}
+
+export async function readThaiIdPayload(): Promise<ThaiIdCardPayload> {
+  const result = await readThaiIdPayloadWithRaw();
+  return result.payload;
 }
 
 export function formatThaiIdReadError(error: unknown): string {

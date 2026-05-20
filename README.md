@@ -55,4 +55,10 @@ On Windows use `http://127.0.0.1:18310`, not `https://localhost`.
 
 ## License
 
-ISC © Soluble Labs
+SolId Reader, release binaries, documentation, trademarks, and all repository
+contents outside `examples/` are proprietary.
+
+Copyright (c) 2026 Soluble Labs. All rights reserved.
+
+The `examples/thai-id-reader` example is licensed under the ISC License. See
+`examples/thai-id-reader/LICENSE`.

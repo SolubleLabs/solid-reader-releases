@@ -1,0 +1,23 @@
+SolId Reader Proprietary License
+
+Copyright (c) 2026 Soluble Labs. All rights reserved.
+
+This repository contains SolId Reader release materials, including application
+binaries, update metadata, documentation, and supporting files. Except for files
+under the `examples/` directory, all contents of this repository are proprietary
+to Soluble Labs.
+
+No rights are granted to copy, modify, distribute, sublicense, sell, host,
+reverse engineer, decompile, disassemble, or create derivative works from the
+proprietary portions of this repository, except as expressly permitted by a
+separate written agreement with Soluble Labs or by applicable law.
+
+You may download and use SolId Reader release binaries only under the terms
+separately agreed with Soluble Labs. If no written license agreement applies,
+you are not authorized to use, redistribute, or modify the proprietary portions
+of this repository.
+
+The example code under `examples/thai-id-reader` is licensed separately under
+the ISC License. See `examples/thai-id-reader/LICENSE`.
+
+Third-party dependencies and components retain their own licenses.
