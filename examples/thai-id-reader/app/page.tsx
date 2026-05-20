@@ -11,6 +11,11 @@ import {
   isLocalBridgeUnreachableError,
   pingLocalBridgeWithTimeout,
 } from "../lib/local-bridge-client";
+import { getSolidReaderDownloadOptions } from "../lib/solid-reader-download";
+import {
+  tryLaunchSolidReader,
+  waitForLocalBridgePong,
+} from "../lib/solid-reader-recovery";
 import {
   ensureThaiIdBridgeReady,
   formatThaiIdReadError,
@@ -23,6 +28,7 @@ import {
 export type BridgeStatus = "checking" | "connected" | "not_running" | "not_responding";
 export type ReaderStatus = "unknown" | "checking" | "ready" | "no_reader";
 export type CardStatus = "unknown" | "checking" | "inserted" | "no_card" | "read_error";
+type RecoveryState = "idle" | "opening" | "install";
 
 interface ReadState {
   isReading: boolean;
@@ -59,6 +65,7 @@ export default function ThaiIdReaderPage() {
   const [bridgeStatus, setBridgeStatus] = useState<BridgeStatus>("checking");
   const [readerStatus, setReaderStatus] = useState<ReaderStatus>("unknown");
   const [cardStatus, setCardStatus] = useState<CardStatus>("unknown");
+  const [recoveryState, setRecoveryState] = useState<RecoveryState>("idle");
   const [readState, setReadState] = useState<ReadState>({
     isReading: false,
     cardData: null,
@@ -71,6 +78,9 @@ export default function ThaiIdReaderPage() {
       const response = await pingLocalBridgeWithTimeout(4_000);
       const text = await response.text();
       setBridgeStatus(response.ok && text.trim() === "pong" ? "connected" : "not_responding");
+      if (response.ok && text.trim() === "pong") {
+        setRecoveryState("idle");
+      }
     } catch {
       setBridgeStatus("not_running");
     }
@@ -155,9 +165,51 @@ export default function ThaiIdReaderPage() {
     setCardStatus("unknown");
   }, []);
 
+  const handleOpenSolidReader = useCallback(async () => {
+    setRecoveryState("opening");
+    tryLaunchSolidReader();
+
+    const connected = await waitForLocalBridgePong({ maxWaitMs: 8_000 });
+    if (connected) {
+      setBridgeStatus("connected");
+      setRecoveryState("idle");
+      return;
+    }
+
+    setBridgeStatus("not_running");
+    setRecoveryState("install");
+  }, []);
+
   const canRead = bridgeStatus === "connected" && !readState.isReading;
   const bridgeIssue =
     !readState.isReading && !readState.cardData ? getBridgeIssue(bridgeStatus) : null;
+  const solidReaderDownloadOptions = getSolidReaderDownloadOptions();
+  const showInstallActions = bridgeStatus === "not_running" && recoveryState === "install";
+  const bridgeIssueMessage =
+    showInstallActions && solidReaderDownloadOptions.length === 0
+      ? "This browser did not report a supported computer type for SolId Reader installation. Try a Windows or Mac clinic computer, or ask IT for help."
+      : bridgeIssue?.message;
+  const bridgeIssueThaiMessage =
+    showInstallActions && solidReaderDownloadOptions.length === 0
+      ? "เบราว์เซอร์นี้ไม่ระบุชนิดคอมพิวเตอร์ที่รองรับการติดตั้ง SolId Reader กรุณาลองใช้เครื่อง Windows หรือ Mac หรือติดต่อฝ่ายไอที"
+      : bridgeIssue?.thaiMessage;
+  const bridgeIssueActions = showInstallActions
+    ? [
+        {
+          label: "Check Again",
+          onClick: checkBridgeStatus,
+        },
+        ...solidReaderDownloadOptions.map((option) => ({
+          label: option.label,
+          href: option.directDownloadUrl,
+        })),
+      ]
+    : [
+        {
+          label: "Check Again",
+          onClick: checkBridgeStatus,
+        },
+      ];
 
   return (
     <main className="relative min-h-screen overflow-hidden bg-background p-4 text-foreground md:p-6 lg:p-8">
@@ -209,13 +261,14 @@ export default function ThaiIdReaderPage() {
               >
                 <ErrorDisplay
                   title={bridgeIssue.title}
-                  message={bridgeIssue.message}
-                  thaiMessage={bridgeIssue.thaiMessage}
-                  onRetry={checkBridgeStatus}
-                  canRetry
-                  actionLabel="Check Again"
+                  message={bridgeIssueMessage ?? bridgeIssue.message}
+                  thaiMessage={bridgeIssueThaiMessage ?? bridgeIssue.thaiMessage}
+                  onRetry={handleOpenSolidReader}
+                  canRetry={recoveryState !== "opening"}
+                  actionLabel={recoveryState === "opening" ? "Opening..." : "Open SolId Reader"}
+                  secondaryActions={bridgeIssueActions}
                   tips={[
-                    "Open SolId Reader on this Windows computer.",
+                    "Open SolId Reader on this computer. If it is not installed, use the download button.",
                     "Confirm the bridge uses the same secret as .env.local.",
                     "Keep this browser and SolId Reader on the same clinic PC.",
                   ]}

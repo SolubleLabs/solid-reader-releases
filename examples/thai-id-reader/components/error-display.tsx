@@ -8,6 +8,11 @@ interface ErrorDisplayProps {
   onRetry: () => void;
   canRetry: boolean;
   actionLabel?: string;
+  secondaryActions?: Array<{
+    label: string;
+    href?: string;
+    onClick?: () => void;
+  }>;
   thaiMessage?: string;
   tips?: string[];
 }
@@ -25,6 +30,7 @@ export function ErrorDisplay({
   onRetry,
   canRetry,
   actionLabel = "Try Again",
+  secondaryActions = [],
   thaiMessage = "เกิดข้อผิดพลาดในการอ่านบัตร กรุณาลองใหม่อีกครั้ง",
   tips = defaultTips,
 }: ErrorDisplayProps) {
@@ -67,19 +73,48 @@ export function ErrorDisplay({
         <p className="text-sm text-muted-foreground">{thaiMessage}</p>
       </motion.div>
 
-      <motion.button
-        type="button"
-        onClick={onRetry}
-        disabled={!canRetry}
-        className="rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+      <motion.div
+        className="flex flex-wrap items-center justify-center gap-3"
         initial={{ opacity: 0, y: 10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.3, delay: 0.3 }}
-        whileHover={canRetry ? { scale: 1.02 } : {}}
-        whileTap={canRetry ? { scale: 0.98 } : {}}
       >
-        {actionLabel}
-      </motion.button>
+        <motion.button
+          type="button"
+          onClick={onRetry}
+          disabled={!canRetry}
+          className="rounded-xl bg-primary px-6 py-3 font-semibold text-primary-foreground shadow-lg shadow-primary/20 transition hover:brightness-110 disabled:cursor-not-allowed disabled:bg-muted disabled:text-muted-foreground"
+          whileHover={canRetry ? { scale: 1.02 } : {}}
+          whileTap={canRetry ? { scale: 0.98 } : {}}
+        >
+          {actionLabel}
+        </motion.button>
+        {secondaryActions.map((action) =>
+          action.href ? (
+            <motion.a
+              key={action.label}
+              href={action.href}
+              download
+              className="rounded-xl border border-border bg-card px-6 py-3 font-semibold text-foreground shadow-lg shadow-black/10 transition hover:bg-muted"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {action.label}
+            </motion.a>
+          ) : (
+            <motion.button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              className="rounded-xl border border-border bg-card px-6 py-3 font-semibold text-foreground shadow-lg shadow-black/10 transition hover:bg-muted"
+              whileHover={{ scale: 1.02 }}
+              whileTap={{ scale: 0.98 }}
+            >
+              {action.label}
+            </motion.button>
+          ),
+        )}
+      </motion.div>
 
       <motion.div
         className="mt-6 max-w-lg rounded-2xl border border-border/60 bg-card/80 p-5 shadow-xl shadow-black/10 backdrop-blur-sm"
