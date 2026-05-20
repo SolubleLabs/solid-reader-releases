@@ -15,4 +15,4 @@ SolId Reader must be running on the same machine as the browser, with a PC/SC re
 
 ## License
 
-ISC. See `LICENSE`.
+Apache-2.0. See `LICENSE`.

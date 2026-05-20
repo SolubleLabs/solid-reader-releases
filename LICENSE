@@ -18,6 +18,6 @@ you are not authorized to use, redistribute, or modify the proprietary portions
 of this repository.
 
 The example code under `examples/thai-id-reader` is licensed separately under
-the ISC License. See `examples/thai-id-reader/LICENSE`.
+the Apache License 2.0. See `examples/thai-id-reader/LICENSE`.
 
 Third-party dependencies and components retain their own licenses.

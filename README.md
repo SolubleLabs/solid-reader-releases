@@ -60,5 +60,5 @@ contents outside `examples/` are proprietary.
 
 Copyright (c) 2026 Soluble Labs. All rights reserved.
 
-The `examples/thai-id-reader` example is licensed under the ISC License. See
+The `examples/thai-id-reader` example is licensed under the Apache License 2.0. See
 `examples/thai-id-reader/LICENSE`.
