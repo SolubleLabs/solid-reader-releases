@@ -34,7 +34,7 @@ function getSecret(): string {
 }
 
 function authHeaders(): Record<string, string> {
-  return { "x-print-bridge-token": getSecret() };
+  return { "x-solid-reader-token": getSecret() };
 }
 
 function getBaseUrls(): string[] {

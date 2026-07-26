@@ -1,8 +1,10 @@
 # SolId Reader
 
-Reads Thai national ID cards via a PC/SC reader and returns JSON on `http://127.0.0.1:18310` (macOS app: `https://localhost:18310`).
+**Thai ID smart-card bridge helper** — reads Thai national ID cards on your PC and exposes the data on a local HTTP API (loopback only).
 
-[Download releases](https://github.com/SolubleLabs/solid-reader-releases/releases) · checksums in `update.json`
+Download installers and binaries from [Releases](https://github.com/SolubleLabs/solid-reader-releases/releases). Version info and checksums are in `update.json` on each release.
+
+**Source / development:** [SolubleLabs/solid-reader](https://github.com/SolubleLabs/solid-reader)
 
 ## Download
 
@@ -15,50 +17,111 @@ Reads Thai national ID cards via a PC/SC reader and returns JSON on `http://127.
 
 ## Requirements
 
-- PC/SC smart card reader + drivers
+- Smart card reader with PC/SC drivers
 - Thai ID card
 
-## How to use
+## Usage
 
-1. Run the installer or app. Bridge listens on port **18310**.
-2. Add `?secret=my-shared-secret` to requests (change via `SHARED_SECRET` env).
-3. Insert the card in the reader, then call **`GET /read-id`**.
+1. Install or run the app for your platform. The bridge listens on port **18310**.
+2. **Windows / Linux:** `http://127.0.0.1:18310`
+3. **macOS (packaged app):** `https://localhost:18310` (local HTTPS for Safari). On Windows, use `127.0.0.1` with **http**, not `https://localhost`.
+4. **Auth:** send header `x-solid-reader-token: <secret>` on every request. Default secret is `my-shared-secret`. Override with env `SHARED_SECRET`.
 
-**Node (quick test)** — insert card, then:
+## Quick JSON test
+
+With the app running, insert a card in the reader, then run:
 
 ```ts
-fetch("http://127.0.0.1:18310/read-id?secret=my-shared-secret")
+fetch("http://127.0.0.1:18310/read-id", {
+  headers: { "x-solid-reader-token": "my-shared-secret" },
+})
   .then((r) => r.json())
   .then((j) => console.log(JSON.stringify(j, null, 2)));
 ```
 
 ```bash
-node -e "fetch('http://127.0.0.1:18310/read-id?secret=my-shared-secret').then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))"
+node -e "fetch('http://127.0.0.1:18310/read-id',{headers:{'x-solid-reader-token':'my-shared-secret'}}).then(r=>r.json()).then(j=>console.log(JSON.stringify(j,null,2)))"
 ```
 
-**Browser** (same machine as the reader):
+On macOS HTTPS builds, use `https://localhost:18310` in the URL instead.
+
+## Card read API
+
+All routes below require header `x-solid-reader-token: <secret>`.
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/ping` | GET | Plain text health (`pong`) |
+| `/health` | GET | JSON health `{ "ok": true }` |
+| `/read-id` | GET | Read card (waits for insertion) |
+
+**Success:**
+
+```json
+{ "success": true, "data": { "citizenID": "...", "fullNameTH": "...", "photoAsBase64Uri": "data:image/..." } }
+```
+
+`data` also includes `fullNameEN`, `dateOfBirth`, `gender`, `address`, and other card fields.
+
+**Failure:**
+
+```json
+{ "success": false, "error": "message", "code": "ERROR_CODE" }
+```
+
+| Code | HTTP status | Meaning |
+|------|-------------|---------|
+| `NO_READER` | 503 | No reader detected in time |
+| `NO_CARD` | 408 | No card inserted in time |
+| `CARD_ERROR` | 500 | Read / PC/SC error |
+
+## Web app integration
+
+From a page in the browser (same machine as the reader):
 
 ```js
-const base =
+const BASE =
   navigator.userAgent.includes("Safari") && !navigator.userAgent.includes("Chrome")
     ? "https://localhost:18310"
     : "http://127.0.0.1:18310";
+const SECRET = "my-shared-secret";
 
-const res = await fetch(`${base}/read-id?secret=my-shared-secret`);
-const json = await res.json();
-if (json.success) {
-  const card = json.data; // citizenID, fullNameTH, fullNameEN, address, photoAsBase64Uri, ...
+const readRes = await fetch(`${BASE}/read-id`, {
+  headers: { "x-solid-reader-token": SECRET },
+});
+const json = await readRes.json();
+if (!json.success) {
+  console.error("Read failed:", json.error, json.code);
+} else {
+  const cardData = json.data;
 }
 ```
 
-On Windows use `http://127.0.0.1:18310`, not `https://localhost`.
+HTTPS sites calling the bridge on Chromium need Private Network Access; the bridge allows that. Safari on macOS needs the HTTPS loopback URL above.
+
+See `examples/thai-id-reader` for a minimal Next.js example that uses the same header auth.
+
+## Print bridge (optional)
+
+Same process also exposes local printing for EMR apps (same `x-solid-reader-token` header):
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/printers` | GET | List printers |
+| `/print/pdf` | POST | Print a PDF from a URL |
+
+Example print body:
+
+```json
+{
+  "pdfUrl": "https://your-server/label/123.pdf",
+  "printerName": "My_Printer",
+  "copies": 1,
+  "paperSize": "80x50mm",
+  "orientation": "landscape"
+}
+```
 
 ## License
 
-SolId Reader, release binaries, documentation, trademarks, and all repository
-contents outside `examples/` are proprietary.
-
-Copyright (c) 2026 Soluble Labs. All rights reserved.
-
-The `examples/thai-id-reader` example is licensed under the Apache License 2.0. See
-`examples/thai-id-reader/LICENSE`.
+ISC © Soluble Labs
