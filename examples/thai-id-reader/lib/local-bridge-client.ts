@@ -11,7 +11,10 @@ export class LocalBridgeUnreachableError extends Error {
   readonly code = "LOCAL_BRIDGE_UNREACHABLE" as const;
 
   constructor(message: string, options?: { cause?: unknown }) {
-    super(message, options?.cause !== undefined ? { cause: options.cause } : undefined);
+    super(
+      message,
+      options?.cause !== undefined ? { cause: options.cause } : undefined,
+    );
     this.name = "LocalBridgeUnreachableError";
   }
 }
@@ -30,6 +33,10 @@ function getSecret(): string {
   return configured?.trim() ? configured.trim() : DEFAULT_SECRET;
 }
 
+function authHeaders(): Record<string, string> {
+  return { "x-print-bridge-token": getSecret() };
+}
+
 function getBaseUrls(): string[] {
   const configured = process.env.NEXT_PUBLIC_PRINT_BRIDGE_BASE_URL;
   if (configured?.trim()) {
@@ -46,12 +53,6 @@ function getBaseUrls(): string[] {
   return [...DEFAULT_BASE_URLS];
 }
 
-function buildBridgeUrl(baseUrl: string, path: string): string {
-  const url = new URL(path, baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`);
-  url.searchParams.set("secret", getSecret());
-  return url.toString();
-}
-
 export function clearLocalBridgeCachedBaseUrl(): void {
   cachedBaseUrl = null;
 }
@@ -64,7 +65,7 @@ export async function fetchLocalBridge(
 
   for (const baseUrl of getBaseUrls()) {
     try {
-      const response = await fetch(buildBridgeUrl(baseUrl, path), init);
+      const response = await fetch(`${baseUrl}${path}`, init);
       cachedBaseUrl = baseUrl;
       return response;
     } catch (error) {
@@ -111,7 +112,10 @@ function mergeAbortSignals(signals: AbortSignal[]): {
 }
 
 export async function pingLocalBridge(init?: RequestInit): Promise<Response> {
-  return fetchLocalBridge("/ping", init);
+  return fetchLocalBridge("/ping", {
+    ...init,
+    headers: { ...authHeaders(), ...init?.headers },
+  });
 }
 
 export async function pingLocalBridgeWithTimeout(
@@ -119,7 +123,10 @@ export async function pingLocalBridgeWithTimeout(
   init?: RequestInit,
 ): Promise<Response> {
   const timeoutController = new AbortController();
-  const timeoutId = window.setTimeout(() => timeoutController.abort(), timeoutMs);
+  const timeoutId = window.setTimeout(
+    () => timeoutController.abort(),
+    timeoutMs,
+  );
   let cleanup: (() => void) | undefined;
 
   try {
@@ -149,5 +156,5 @@ export async function pingLocalBridgeWithTimeout(
 }
 
 export async function readThaiIdCard(): Promise<Response> {
-  return fetchLocalBridge("/read-id");
+  return fetchLocalBridge("/read-id", { headers: authHeaders() });
 }
